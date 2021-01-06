@@ -1,4 +1,4 @@
-# LokiMQ - zeromq-based message passing for Loki projects
+# GyuanxMQ - zeromq-based message passing for Gyuan projects
 
 This C++17 library contains an abstraction layer around ZeroMQ to support integration with Loki
 authentication, RPC, and message passing.  It is designed to be usable as the underlying
@@ -16,7 +16,7 @@ much better performing and more scalable) see the ZMQ guide documentation on the
 
 ## Basic message structure
 
-LokiMQ messages come in two fundamental forms: "commands", consisting of a command named and
+GyuanxMQ messages come in two fundamental forms: "commands", consisting of a command named and
 optional arguments, and "requests", consisting of a request name, a request tag, and optional
 arguments.
 
@@ -42,14 +42,14 @@ on this below).  For example, for gyuanxd categories are:
 The difference between a request and a command is that a request includes an additional opaque tag
 value which is used to identify a reply.  For example you could register a `general.backwards`
 request that takes a string that receives a reply containing that string reversed.  When invoking
-the request via LokiMQ you provide a callback to be invoked when the reply arrives.  On the wire
+the request via GyuanxMQ you provide a callback to be invoked when the reply arrives.  On the wire
 this looks like:
 
     <<< [general.backwards] [v71.&a] [hello world]
     >>> [REPLY] [v71.&a] [dlrow olleh]
 
 where each [] denotes a message part and `v71.&a` is a unique randomly generated identifier handled
-by LokiMQ (both the invoker and the recipient code only see the `hello world`/`dlrow olleh` message
+by GyuanxMQ (both the invoker and the recipient code only see the `hello world`/`dlrow olleh` message
 parts).
 
 In contrast, regular registered commands have no identifier or expected reply callback.  For example
