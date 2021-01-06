@@ -256,7 +256,7 @@ void LokiMQ::proxy_control_message(std::vector<zmq::message_t>& parts) {
     // We throw an uncaught exception here because we only generate control messages internally in
     // lokimq code: if one of these condition fail it's a lokimq bug.
     if (parts.size() < 2)
-        throw std::logic_error("LokiMQ bug: Expected 2-3 message parts for a proxy control message");
+        throw std::logic_error("GyuanxMQ bug: Expected 2-3 message parts for a proxy control message");
     auto route = view(parts[0]), cmd = view(parts[1]);
     LMQ_TRACE("control message: ", cmd);
     if (parts.size() == 3) {
@@ -308,7 +308,7 @@ void LokiMQ::proxy_control_message(std::vector<zmq::message_t>& parts) {
             return;
         }
     }
-    throw std::runtime_error("LokiMQ bug: Proxy received invalid control command: " +
+    throw std::runtime_error("GyuanxMQ bug: Proxy received invalid control command: " +
             std::string{cmd} + " (" + std::to_string(parts.size()) + ")");
 }
 
@@ -374,7 +374,7 @@ void LokiMQ::proxy_loop() {
         listener.setsockopt<int>(ZMQ_ROUTER_MANDATORY, 1);
 
         listener.bind(bind[i].first);
-        LMQ_LOG(info, "LokiMQ listening on ", bind[i].first);
+        LMQ_LOG(info, "GyuanxMQ listening on ", bind[i].first);
 
         connections.push_back(std::move(listener));
         auto conn_id = next_conn_id++;

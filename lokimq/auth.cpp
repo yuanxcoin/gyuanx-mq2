@@ -45,7 +45,7 @@ bool LokiMQ::proxy_check_auth(size_t conn_index, bool outgoing, const peer_info&
         reply = "FORBIDDEN";
     } else if (cat_call.first->access.local_sn && !local_gnode) {
         LMQ_LOG(warn, "Access denied to ", command, " for peer [", to_hex(peer.pubkey), "]/", peer_address(cmd),
-                ": that command is only available when this LokiMQ is running in service node mode");
+                ": that command is only available when this GyuanxMQ is running in service node mode");
         reply = "NOT_A_SERVICE_NODE";
     } else if (cat_call.first->access.remote_sn && !peer.gnode) {
         LMQ_LOG(warn, "Access denied to ", command, " for peer [", to_hex(peer.pubkey), "]/", peer_address(cmd),

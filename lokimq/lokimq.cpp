@@ -161,11 +161,11 @@ std::atomic<int> next_id{1};
 zmq::socket_t& LokiMQ::get_control_socket() {
     assert(proxy_thread.joinable());
 
-    // Maps the LokiMQ unique ID to a local thread command socket.
+    // Maps the GyuanxMQ unique ID to a local thread command socket.
     static thread_local std::map<int, std::shared_ptr<zmq::socket_t>> control_sockets;
     static thread_local std::pair<int, std::shared_ptr<zmq::socket_t>> last{-1, nullptr};
 
-    // Optimize by caching the last value; LokiMQ is often a singleton and in that case we're
+    // Optimize by caching the last value; GyuanxMQ is often a singleton and in that case we're
     // going to *always* hit this optimization.  Even if it isn't, we're probably likely to need the
     // same control socket from the same thread multiple times sequentially so this may still help.
     if (object_id == last.first)
@@ -179,7 +179,7 @@ zmq::socket_t& LokiMQ::get_control_socket() {
 
     std::lock_guard lock{control_sockets_mutex};
     if (proxy_shutting_down)
-        throw std::runtime_error("Unable to obtain LokiMQ control socket: proxy thread is shutting down");
+        throw std::runtime_error("Unable to obtain GyuanxMQcontrol socket: proxy thread is shutting down");
     auto control = std::make_shared<zmq::socket_t>(context, zmq::socket_type::dealer);
     control->setsockopt<int>(ZMQ_LINGER, 0);
     control->connect(SN_ADDR_COMMAND);
@@ -208,11 +208,11 @@ LokiMQ::LokiMQ(
         throw std::runtime_error{"libsodium initialization failed"};
 
     if (pubkey.empty() != privkey.empty()) {
-        throw std::invalid_argument("LokiMQ construction failed: one (and only one) of pubkey/privkey is empty. Both must be specified, or both empty to generate a key.");
+        throw std::invalid_argument("GyuanxMQconstruction failed: one (and only one) of pubkey/privkey is empty. Both must be specified, or both empty to generate a key.");
     } else if (pubkey.empty()) {
         if (gnode)
-            throw std::invalid_argument("Cannot construct a service node mode LokiMQ without a keypair");
-        LMQ_LOG(debug, "generating x25519 keypair for remote-only LokiMQ instance");
+            throw std::invalid_argument("Cannot construct a service node mode GyuanxMQwithout a keypair");
+        LMQ_LOG(debug, "generating x25519 keypair for remote-only GyuanxMQinstance");
         pubkey.resize(crypto_box_PUBLICKEYBYTES);
         privkey.resize(crypto_box_SECRETKEYBYTES);
         crypto_box_keypair(reinterpret_cast<unsigned char*>(&pubkey[0]), reinterpret_cast<unsigned char*>(&privkey[0]));
@@ -227,7 +227,7 @@ LokiMQ::LokiMQ(
         std::string verify_pubkey(crypto_box_PUBLICKEYBYTES, 0);
         crypto_scalarmult_base(reinterpret_cast<unsigned char*>(&verify_pubkey[0]), reinterpret_cast<unsigned char*>(&privkey[0]));
         if (verify_pubkey != pubkey)
-            throw std::invalid_argument("Invalid pubkey/privkey values given to LokiMQ construction: pubkey verification failed");
+            throw std::invalid_argument("Invalid pubkey/privkey values given to GyuanxMQconstruction: pubkey verification failed");
     }
 }
 
@@ -241,7 +241,7 @@ void LokiMQ::start() {
     if (bind.empty() && local_gnode)
         throw std::invalid_argument{"Cannot create a service node listener with no address(es) to bind"};
 
-    LMQ_LOG(info, "Initializing LokiMQ ", bind.empty() ? "remote-only" : "listener", " with pubkey ", to_hex(pubkey));
+    LMQ_LOG(info, "Initializing GyuanxMQ ", bind.empty() ? "remote-only" : "listener", " with pubkey ", to_hex(pubkey));
 
     int zmq_socket_limit = context.getctxopt(ZMQ_SOCKET_LIMIT);
     if (MAX_SOCKETS > 1 && MAX_SOCKETS <= zmq_socket_limit)
@@ -419,10 +419,10 @@ LokiMQ::~LokiMQ() {
         return;
     }
 
-    LMQ_LOG(info, "LokiMQ shutting down proxy thread");
+    LMQ_LOG(info, "GyuanxMQshutting down proxy thread");
     detail::send_control(get_control_socket(), "QUIT");
     proxy_thread.join();
-    LMQ_LOG(info, "LokiMQ proxy thread has stopped");
+    LMQ_LOG(info, "GyuanxMQproxy thread has stopped");
 }
 
 std::ostream &operator<<(std::ostream &os, LogLevel lvl) {
