@@ -1,5 +1,5 @@
-#include "lokimq.h"
-#include "lokimq-internal.h"
+#include "gyuanxmq.h"
+#include "gyuanxmq-internal.h"
 #include "hex.h"
 
 #if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
@@ -17,9 +17,9 @@ extern "C" {
 }
 #endif
 
-namespace lokimq {
+namespace gyuanxmq {
 
-void LokiMQ::proxy_quit() {
+void GyuanxMQ::proxy_quit() {
     LMQ_LOG(debug, "Received quit command, shutting down proxy thread");
 
     assert(std::none_of(workers.begin(), workers.end(), [](auto& worker) { return worker.worker_thread.joinable(); }));
@@ -43,7 +43,7 @@ void LokiMQ::proxy_quit() {
     LMQ_LOG(debug, "Proxy thread teardown complete");
 }
 
-void LokiMQ::proxy_send(bt_dict_consumer data) {
+void GyuanxMQ::proxy_send(bt_dict_consumer data) {
     // NB: bt_dict_consumer goes in alphabetical order
     std::string_view hint;
     std::chrono::milliseconds keep_alive{DEFAULT_SEND_KEEP_ALIVE};
@@ -207,7 +207,7 @@ void LokiMQ::proxy_send(bt_dict_consumer data) {
     }
 }
 
-void LokiMQ::proxy_reply(bt_dict_consumer data) {
+void GyuanxMQ::proxy_reply(bt_dict_consumer data) {
     bool have_conn_id = false;
     ConnectionID conn_id{0};
     if (data.skip_until("conn_id")) {
@@ -252,9 +252,9 @@ void LokiMQ::proxy_reply(bt_dict_consumer data) {
     }
 }
 
-void LokiMQ::proxy_control_message(std::vector<zmq::message_t>& parts) {
+void GyuanxMQ::proxy_control_message(std::vector<zmq::message_t>& parts) {
     // We throw an uncaught exception here because we only generate control messages internally in
-    // lokimq code: if one of these condition fail it's a lokimq bug.
+    // gyuanxmq code: if one of these condition fail it's a gyuanxmq bug.
     if (parts.size() < 2)
         throw std::logic_error("GyuanxMQ bug: Expected 2-3 message parts for a proxy control message");
     auto route = view(parts[0]), cmd = view(parts[1]);
@@ -312,7 +312,7 @@ void LokiMQ::proxy_control_message(std::vector<zmq::message_t>& parts) {
             std::string{cmd} + " (" + std::to_string(parts.size()) + ")");
 }
 
-void LokiMQ::proxy_loop() {
+void GyuanxMQ::proxy_loop() {
 
 #if defined(__linux__) || defined(__sun) || defined(__MINGW32__)
     pthread_setname_np(pthread_self(), "lmq-proxy");
@@ -550,7 +550,7 @@ static bool is_error_response(std::string_view cmd) {
 
 // Return true if we recognized/handled the builtin command (even if we reject it for whatever
 // reason)
-bool LokiMQ::proxy_handle_builtin(size_t conn_index, std::vector<zmq::message_t>& parts) {
+bool GyuanxMQ::proxy_handle_builtin(size_t conn_index, std::vector<zmq::message_t>& parts) {
     // Doubling as a bool and an offset:
     size_t incoming = connections[conn_index].getsockopt<int>(ZMQ_TYPE) == ZMQ_ROUTER;
 
@@ -647,7 +647,7 @@ bool LokiMQ::proxy_handle_builtin(size_t conn_index, std::vector<zmq::message_t>
             // pre-1.1.0 sent just a plain UNKNOWNCOMMAND (without the actual command); this was not
             // useful, but also this response is *expected* for things 1.0.5 didn't understand, like
             // FORBIDDEN_SN: so log it only at debug level and move on.
-            LMQ_LOG(debug, "Received plain UNKNOWNCOMMAND; remote is probably an older lokimq. Ignoring.");
+            LMQ_LOG(debug, "Received plain UNKNOWNCOMMAND; remote is probably an older gyuanxmq. Ignoring.");
             return true;
         }
 
@@ -672,7 +672,7 @@ bool LokiMQ::proxy_handle_builtin(size_t conn_index, std::vector<zmq::message_t>
     return false;
 }
 
-void LokiMQ::proxy_process_queue() {
+void GyuanxMQ::proxy_process_queue() {
     if (max_workers == 0) // shutting down
         return;
 

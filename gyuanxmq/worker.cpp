@@ -1,6 +1,6 @@
-#include "lokimq.h"
+#include "gyuanxmq.h"
 #include "batch.h"
-#include "lokimq-internal.h"
+#include "gyuanxmq-internal.h"
 
 #if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
 extern "C" {
@@ -9,7 +9,7 @@ extern "C" {
 }
 #endif
 
-namespace lokimq {
+namespace gyuanxmq {
 
 namespace {
 
@@ -17,7 +17,7 @@ namespace {
 // received.  If "QUIT" was received, replies with "QUITTING" on the socket and closes it, then
 // returns false.
 [[gnu::always_inline]] inline
-bool worker_wait_for(LokiMQ& lmq, zmq::socket_t& sock, std::vector<zmq::message_t>& parts, const std::string_view worker_id, const std::string_view expect) {
+bool worker_wait_for(GyuanxMQ& lmq, zmq::socket_t& sock, std::vector<zmq::message_t>& parts, const std::string_view worker_id, const std::string_view expect) {
     while (true) {
         lmq.log(LogLevel::debug, __FILE__, __LINE__, "worker ", worker_id, " waiting for ", expect);
         parts.clear();
@@ -46,7 +46,7 @@ bool worker_wait_for(LokiMQ& lmq, zmq::socket_t& sock, std::vector<zmq::message_
 
 }
 
-void LokiMQ::worker_thread(unsigned int index, std::optional<std::string> tagged, std::function<void()> start) {
+void GyuanxMQ::worker_thread(unsigned int index, std::optional<std::string> tagged, std::function<void()> start) {
     std::string routing_id = (tagged ? "t" : "w") + std::to_string(index); // for routing
     std::string_view worker_id{tagged ? *tagged : routing_id};              // for debug
 
@@ -72,8 +72,8 @@ void LokiMQ::worker_thread(unsigned int index, std::optional<std::string> tagged
 
     bool waiting_for_command;
     if (tagged) {
-        // If we're a tagged worker then we got started up before LokiMQ started, so we need to wait
-        // for an all-clear signal from LokiMQ first, then we fire our `start` callback, then we can
+        // If we're a tagged worker then we got started up before GyuanxMQ started, so we need to wait
+        // for an all-clear signal from GyuanxMQ first, then we fire our `start` callback, then we can
         // start waiting for commands in the main loop further down.  (We also can't get the
         // reference to our `tagged_workers` element until the main proxy threads is running).
 
@@ -157,7 +157,7 @@ void LokiMQ::worker_thread(unsigned int index, std::optional<std::string> tagged
 }
 
 
-LokiMQ::run_info& LokiMQ::get_idle_worker() {
+GyuanxMQ::run_info& GyuanxMQ::get_idle_worker() {
     if (idle_workers.empty()) {
         size_t id = workers.size();
         assert(workers.capacity() > id);
@@ -172,7 +172,7 @@ LokiMQ::run_info& LokiMQ::get_idle_worker() {
     return workers[id];
 }
 
-void LokiMQ::proxy_worker_message(std::vector<zmq::message_t>& parts) {
+void GyuanxMQ::proxy_worker_message(std::vector<zmq::message_t>& parts) {
     // Process messages sent by workers
     if (parts.size() != 2) {
         LMQ_LOG(error, "Received send invalid ", parts.size(), "-part message");
@@ -266,14 +266,14 @@ void LokiMQ::proxy_worker_message(std::vector<zmq::message_t>& parts) {
     }
 }
 
-void LokiMQ::proxy_run_worker(run_info& run) {
+void GyuanxMQ::proxy_run_worker(run_info& run) {
     if (!run.worker_thread.joinable())
         run.worker_thread = std::thread{[this, id=run.worker_id] { worker_thread(id); }};
     else
         send_routed_message(workers_socket, run.worker_routing_id, "RUN");
 }
 
-void LokiMQ::proxy_to_worker(size_t conn_index, std::vector<zmq::message_t>& parts) {
+void GyuanxMQ::proxy_to_worker(size_t conn_index, std::vector<zmq::message_t>& parts) {
     bool outgoing = connections[conn_index].getsockopt<int>(ZMQ_TYPE) == ZMQ_DEALER;
 
     peer_info tmp_peer;
@@ -289,9 +289,9 @@ void LokiMQ::proxy_to_worker(size_t conn_index, std::vector<zmq::message_t>& par
         peer = &it->second;
     } else {
         std::tie(tmp_peer.pubkey, tmp_peer.auth_level) = detail::extract_metadata(parts.back());
-        tmp_peer.gnode = tmp_peer.pubkey.size() == 32 && active_gnodes.count(tmp_peer.pubkey);
+        tmp_peer.service_node = tmp_peer.pubkey.size() == 32 && active_service_nodes.count(tmp_peer.pubkey);
 
-        if (tmp_peer.gnode) {
+        if (tmp_peer.service_node) {
             // It's a service node so we should have a peer_info entry; see if we can find one with
             // the same route, and if not, add one.
             auto pr = peers.equal_range(tmp_peer.pubkey);
@@ -332,7 +332,7 @@ void LokiMQ::proxy_to_worker(size_t conn_index, std::vector<zmq::message_t>& par
         return;
 
     auto& category = *cat_call.first;
-    Access access{peer->auth_level, peer->gnode, local_gnode};
+    Access access{peer->auth_level, peer->service_node, local_service_node};
 
     if (category.active_threads >= category.reserved_threads && active_workers() >= general_workers) {
         // No free reserved or general spots, try to queue it for later
@@ -343,7 +343,7 @@ void LokiMQ::proxy_to_worker(size_t conn_index, std::vector<zmq::message_t>& par
         }
 
         LMQ_LOG(debug, "No available free workers, queuing ", command, " for later");
-        ConnectionID conn{peer->gnode ? ConnectionID::SN_ID : conn_index_to_id[conn_index].id, peer->pubkey, std::move(tmp_peer.route)};
+        ConnectionID conn{peer->service_node ? ConnectionID::SN_ID : conn_index_to_id[conn_index].id, peer->pubkey, std::move(tmp_peer.route)};
         pending_commands.emplace_back(category, std::move(command), std::move(data_parts), cat_call.second,
                 std::move(conn), std::move(access), peer_address(parts[command_part_index]));
         category.queued++;
@@ -357,9 +357,9 @@ void LokiMQ::proxy_to_worker(size_t conn_index, std::vector<zmq::message_t>& par
 
     auto& run = get_idle_worker();
     {
-        ConnectionID c{peer->gnode ? ConnectionID::SN_ID : conn_index_to_id[conn_index].id, peer->pubkey};
+        ConnectionID c{peer->service_node ? ConnectionID::SN_ID : conn_index_to_id[conn_index].id, peer->pubkey};
         c.route = std::move(tmp_peer.route);
-        if (outgoing || peer->gnode)
+        if (outgoing || peer->service_node)
             tmp_peer.route.clear();
         run.load(&category, std::move(command), std::move(c), std::move(access), peer_address(parts[command_part_index]),
                 std::move(data_parts), cat_call.second);
@@ -375,7 +375,7 @@ void LokiMQ::proxy_to_worker(size_t conn_index, std::vector<zmq::message_t>& par
     category.active_threads++;
 }
 
-void LokiMQ::inject_task(const std::string& category, std::string command, std::string remote, std::function<void()> callback) {
+void GyuanxMQ::inject_task(const std::string& category, std::string command, std::string remote, std::function<void()> callback) {
     if (!callback) return;
     auto it = categories.find(category);
     if (it == categories.end())
@@ -384,7 +384,7 @@ void LokiMQ::inject_task(const std::string& category, std::string command, std::
                 injected_task{it->second, std::move(command), std::move(remote), std::move(callback)})));
 }
 
-void LokiMQ::proxy_inject_task(injected_task task) {
+void GyuanxMQ::proxy_inject_task(injected_task task) {
     auto& category = task.cat;
     if (category.active_threads >= category.reserved_threads && active_workers() >= general_workers) {
         // No free worker slot, queue for later

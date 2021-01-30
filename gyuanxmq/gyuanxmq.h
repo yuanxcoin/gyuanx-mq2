@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020, The Loki Project
+// Copyright (c) 2019-2020, The Gyuanx Project
 //
 // All rights reserved.
 //
@@ -56,7 +56,7 @@
 #error "ZMQ >= 4.3.0 required"
 #endif
 
-namespace lokimq {
+namespace gyuanxmq {
 
 using namespace std::literals;
 
@@ -95,22 +95,22 @@ struct TaggedThreadID {
 private:
     int _id;
     explicit constexpr TaggedThreadID(int id) : _id{id} {}
-    friend class LokiMQ;
+    friend class GyuanxMQ;
     template <typename R> friend class Batch;
 };
 
 /**
- * Class that handles LokiMQ listeners, connections, proxying, and workers.  An application
+ * Class that handles GyuanxMQ listeners, connections, proxying, and workers.  An application
  * typically has just one instance of this class.
  */
-class LokiMQ {
+class GyuanxMQ {
 
 private:
 
     /// The global context
     zmq::context_t context;
 
-    /// A unique id for this LokiMQ instance, assigned in a thread-safe manner during construction.
+    /// A unique id for this GyuanxMQ instance, assigned in a thread-safe manner during construction.
     const int object_id;
 
     /// The x25519 keypair of this connection.  For service nodes these are the long-run x25519 keys
@@ -119,7 +119,7 @@ private:
     std::string pubkey, privkey;
 
     /// True if *this* node is running in service node mode (whether or not actually active)
-    bool local_gnode = false;
+    bool local_service_node = false;
 
     /// The thread in which most of the intermediate work happens (handling external connections
     /// and proxying requests between them to worker threads)
@@ -135,7 +135,7 @@ private:
     std::mutex control_sockets_mutex;
 
     /// Called to obtain a "command" socket that attaches to `control` to send commands to the
-    /// proxy thread from other threads.  This socket is unique per thread and LokiMQ instance.
+    /// proxy thread from other threads.  This socket is unique per thread and GyuanxMQ instance.
     zmq::socket_t& get_control_socket();
 
     /// Stores all of the sockets created in different threads via `get_control_socket`.  This is
@@ -154,12 +154,12 @@ public:
     /// @param pubkey - the x25519 pubkey of the connecting client (32 byte string).  Note that this
     /// will only be non-empty for incoming connections on `listen_curve` sockets; `listen_plain`
     /// sockets do not have a pubkey.
-    /// @param gnode - will be true if the `pubkey` is in the set of known active service
+    /// @param service_node - will be true if the `pubkey` is in the set of known active service
     /// nodes.
     ///
     /// @returns an `AuthLevel` enum value indicating the default auth level for the incoming
     /// connection, or AuthLevel::denied if the connection should be refused.
-    using AllowFunc = std::function<AuthLevel(std::string_view address, std::string_view pubkey, bool gnode)>;
+    using AllowFunc = std::function<AuthLevel(std::string_view address, std::string_view pubkey, bool service_node)>;
 
     /// Callback that is invoked when we need to send a "strong" message to a SN that we aren't
     /// already connected to and need to establish a connection.  This callback returns the ZMQ
@@ -174,7 +174,7 @@ public:
     using ReplyCallback = std::function<void(bool success, std::vector<std::string> data)>;
 
     /// Called to write a log message.  This will only be called if the `level` is >= the current
-    /// LokiMQ object log level.  It must be a raw function pointer (or a capture-less lambda) for
+    /// GyuanxMQ object log level.  It must be a raw function pointer (or a capture-less lambda) for
     /// performance reasons.  Takes four arguments: the log level of the message, the filename and
     /// line number where the log message was invoked, and the log message itself.
     using Logger = std::function<void(LogLevel level, const char* file, int line, std::string msg)>;
@@ -185,12 +185,12 @@ public:
     using ConnectFailure = std::function<void(ConnectionID, std::string_view)>;
 
     /// Explicitly non-copyable, non-movable because most things here aren't copyable, and a few
-    /// things aren't movable, either.  If you need to pass the LokiMQ instance around, wrap it
+    /// things aren't movable, either.  If you need to pass the GyuanxMQ instance around, wrap it
     /// in a unique_ptr or shared_ptr.
-    LokiMQ(const LokiMQ&) = delete;
-    LokiMQ& operator=(const LokiMQ&) = delete;
-    LokiMQ(LokiMQ&&) = delete;
-    LokiMQ& operator=(LokiMQ&&) = delete;
+    GyuanxMQ(const GyuanxMQ&) = delete;
+    GyuanxMQ& operator=(const GyuanxMQ&) = delete;
+    GyuanxMQ(GyuanxMQ&&) = delete;
+    GyuanxMQ& operator=(GyuanxMQ&&) = delete;
 
     /** How long to wait for handshaking to complete on external connections before timing out and
      * closing the connection.  Setting this only affects new outgoing connections. */
@@ -199,8 +199,8 @@ public:
     /** Whether to use a zmq routing ID based on the pubkey for new outgoing connections.  This is
      * normally desirable as it allows the listener to recognize that the incoming connection is a
      * reconnection from the same remote and handover routing to the new socket while closing off
-     * the (likely dead) old socket.  This, however, prevents a single LokiMQ instance from
-     * establishing multiple connections to the same listening LokiMQ, which is sometimes useful
+     * the (likely dead) old socket.  This, however, prevents a single GyuanxMQ instance from
+     * establishing multiple connections to the same listening GyuanxMQ, which is sometimes useful
      * (for example when testing), and so this option can be overridden to `false` to use completely
      * random zmq routing ids on outgoing connections (which will thus allow multiple connections).
      */
@@ -217,13 +217,13 @@ public:
 
     /** Minimum reconnect interval: when a connection fails or dies, wait this long before
      * attempting to reconnect.  (ZMQ may randomize the value somewhat to avoid reconnection
-     * storms).  See RECONNECT_INTERVAL_MAX as well.  The LokiMQ default is 250ms.
+     * storms).  See RECONNECT_INTERVAL_MAX as well.  The GyuanxMQ default is 250ms.
      */
     std::chrono::milliseconds RECONNECT_INTERVAL = 250ms;
 
     /** Maximum reconnect interval.  When this is set to a value larger than RECONNECT_INTERVAL then
      * ZMQ's reconnection logic uses an exponential backoff: each reconnection attempts waits twice
-     * as long as the previous attempt, up to this maximum.  The LokiMQ default is 5 seconds.
+     * as long as the previous attempt, up to this maximum.  The GyuanxMQ default is 5 seconds.
      */
     std::chrono::milliseconds RECONNECT_INTERVAL_MAX = 5s;
 
@@ -322,7 +322,7 @@ private:
         /// True if we've authenticated this peer as a service node.  This gets set on incoming
         /// messages when we check the remote's pubkey, and immediately on outgoing connections to
         /// SNs (since we know their pubkey -- we'll fail to connect if it doesn't match).
-        bool gnode = false;
+        bool service_node = false;
 
         /// The auth level of this peer, as returned by the AllowFunc for incoming connections or
         /// specified during outgoing connections.
@@ -542,7 +542,7 @@ private:
     /// Runs any queued batch jobs
     void proxy_run_batch_jobs(std::queue<batch_job>& jobs, int reserved, int& active, bool reply);
 
-    /// BATCH command.  Called with a Batch<R> (see lokimq/batch.h) object pointer for the proxy to
+    /// BATCH command.  Called with a Batch<R> (see gyuanxmq/batch.h) object pointer for the proxy to
     /// take over and queue batch jobs.
     void proxy_batch(detail::Batch* batch);
 
@@ -617,7 +617,7 @@ private:
 
 
     /// Set of active service nodes.
-    pubkey_set active_gnodes;
+    pubkey_set active_service_nodes;
 
     /// Resets or updates the stored set of active SN pubkeys
     void proxy_set_active_sns(std::string_view data);
@@ -629,7 +629,7 @@ private:
     /// Details for a pending command; such a command already has authenticated access and is just
     /// waiting for a thread to become available to handle it.  This also gets used (via the
     /// `callback` variant) for injected external jobs to be able to integrate some external
-    /// interface with the lokimq job queue.
+    /// interface with the gyuanxmq job queue.
     struct pending_command {
         category& cat;
         std::string command;
@@ -724,7 +724,7 @@ private:
 
 public:
     /**
-     * LokiMQ constructor.  This constructs the object but does not start it; you will typically
+     * GyuanxMQ constructor.  This constructs the object but does not start it; you will typically
      * want to first add categories and commands, then finish startup by invoking `start()`.
      * (Categories and commands cannot be added after startup).
      *
@@ -735,7 +735,7 @@ public:
      * @param privkey the service node's private key (32-byte binary string), or empty to generate
      * one.
      *
-     * @param gnode - true if this instance should be considered a service node for the
+     * @param service_node - true if this instance should be considered a service node for the
      * purpose of allowing "Access::local_sn" remote calls.  (This should be true if we are
      * *capable* of being a service node, whether or not we are currently actively).  If specified
      * as true then the pubkey and privkey values must not be empty.
@@ -748,7 +748,7 @@ public:
      * listening in curve25519 mode (otherwise we couldn't verify its authenticity).  Should return
      * empty for not found or if SN lookups are not supported.
      *
-     * @param allow_incoming is a callback that LokiMQ can use to determine whether an incoming
+     * @param allow_incoming is a callback that GyuanxMQ can use to determine whether an incoming
      * connection should be allowed at all and, if so, whether the connection is from a known
      * service node.  Called with the connecting IP, the remote's verified x25519 pubkey, and the 
      * called on incoming connections with the (verified) incoming connection
@@ -761,34 +761,34 @@ public:
      * @param level the initial log level; defaults to warn.  The log level can be changed later by
      * calling log_level(...).
      */
-    LokiMQ( std::string pubkey,
+    GyuanxMQ( std::string pubkey,
             std::string privkey,
-            bool gnode,
+            bool service_node,
             SNRemoteAddress sn_lookup,
             Logger logger = [](LogLevel, const char*, int, std::string) { },
             LogLevel level = LogLevel::warn);
 
     /**
-     * Simplified LokiMQ constructor for a non-listening client or simple listener without any
-     * outgoing SN connection lookup capabilities.  The LokiMQ object will not be able to establish
+     * Simplified GyuanxMQ constructor for a non-listening client or simple listener without any
+     * outgoing SN connection lookup capabilities.  The GyuanxMQ object will not be able to establish
      * new connections (including reconnections) to service nodes by pubkey.
      */
-    explicit LokiMQ(
+    explicit GyuanxMQ(
             Logger logger = [](LogLevel, const char*, int, std::string) { },
             LogLevel level = LogLevel::warn)
-        : LokiMQ("", "", false, [](auto) { return ""s; /*no peer lookups*/ }, std::move(logger), level) {}
+        : GyuanxMQ("", "", false, [](auto) { return ""s; /*no peer lookups*/ }, std::move(logger), level) {}
 
     /**
      * Destructor; instructs the proxy to quit.  The proxy tells all workers to quit, waits for them
      * to quit and rejoins the threads then quits itself.  The outer thread (where the destructor is
      * running) rejoins the proxy thread.
      */
-    ~LokiMQ();
+    ~GyuanxMQ();
 
-    /// Sets the log level of the LokiMQ object.
+    /// Sets the log level of the GyuanxMQ object.
     void log_level(LogLevel level);
 
-    /// Gets the log level of the LokiMQ object.
+    /// Gets the log level of the GyuanxMQ object.
     LogLevel log_level() const;
 
     /**
@@ -851,7 +851,7 @@ public:
      *
      * Aliases should follow the `category.command` format for both the from and to names, and
      * should only be called for `to` categories that are already defined.  The category name is not
-     * currently enforced on the `from` name (for backwards compatility with Loki's quorumnet code)
+     * currently enforced on the `from` name (for backwards compatility with Gyuanx's quorumnet code)
      * but will be at some point.
      *
      * Access permissions for an aliased command depend only on the mapped-to value; for example, if
@@ -874,7 +874,7 @@ public:
      * \param name - the name of the thread; will be used in log messages and (if supported by the
      * OS) as the system thread name.
      *
-     * \param start - an optional callback to invoke from the thread as soon as LokiMQ itself starts
+     * \param start - an optional callback to invoke from the thread as soon as GyuanxMQ itself starts
      * up (i.e. after a call to `start()`).
      *
      * \returns a TaggedThreadID object that can be passed to job(), batch(), or add_timer() to
@@ -890,7 +890,7 @@ public:
      * Note that some internal jobs are counted as batch jobs: in particular timers added via
      * add_timer() are scheduled as batch jobs.
      *
-     * Cannot be called after start()ing the LokiMQ instance.
+     * Cannot be called after start()ing the GyuanxMQ instance.
      */
     void set_batch_threads(int threads);
 
@@ -902,7 +902,7 @@ public:
      *
      * Defaults to one-eighth of the number of configured general threads, rounded up.
      *
-     * Cannot be changed after start()ing the LokiMQ instance.
+     * Cannot be changed after start()ing the GyuanxMQ instance.
      */
     void set_reply_threads(int threads);
 
@@ -917,7 +917,7 @@ public:
      *
      * Defaults to `std::thread::hardware_concurrency()`.
      *
-     * Cannot be called after start()ing the LokiMQ instance.
+     * Cannot be called after start()ing the GyuanxMQ instance.
      */
     void set_general_threads(int threads);
 
@@ -1009,7 +1009,7 @@ public:
      * established or failed to establish.
      *
      * @param remote the remote connection address either as implicitly from a string or as a full
-     * lokimq::address object; see address.h for details.  This specifies both the connection
+     * gyuanxmq::address object; see address.h for details.  This specifies both the connection
      * address and whether curve encryption should be used.
      * @param on_connect called with the identifier after the connection has been established.
      * @param on_failure called with the identifier and failure message if we fail to connect.
@@ -1036,7 +1036,7 @@ public:
     /// encryption as separate arguments.  New code should either use a pubkey-embedded address
     /// string, or specify remote address and pubkey with an `address` object such as:
     ///     connect_remote(address{remote, pubkey}, ...)
-    [[deprecated("use connect_remote() with a lokimq::address instead")]]
+    [[deprecated("use connect_remote() with a gyuanxmq::address instead")]]
     ConnectionID connect_remote(std::string_view remote, ConnectSuccess on_connect, ConnectFailure on_failure,
             std::string_view pubkey,
             AuthLevel auth_level = AuthLevel::none,
@@ -1061,7 +1061,7 @@ public:
 
     /**
      * Queue a message to be relayed to the given service node or remote without requiring a reply.
-     * LokiMQ will attempt to relay the message (first connecting and handshaking to the remote SN
+     * GyuanxMQ will attempt to relay the message (first connecting and handshaking to the remote SN
      * if not already connected).
      *
      * If a new connection is established it will have a relatively short (30s) idle timeout.  If
@@ -1131,10 +1131,10 @@ public:
     template <typename... T>
     void request(ConnectionID to, std::string_view cmd, ReplyCallback callback, const T&... opts);
 
-    /** Injects an external task into the lokimq command queue.  This is used to allow connecting
-     * non-LokiMQ requests into the LokiMQ thread pool as if they were ordinary requests, to be
+    /** Injects an external task into the gyuanxmq command queue.  This is used to allow connecting
+     * non-GyuanxMQ requests into the GyuanxMQ thread pool as if they were ordinary requests, to be
      * scheduled as commands of an individual category.  For example, you might support rpc requests
-     * via LokiMQ as `rpc.some_command` and *also* accept them over HTTP.  Using `inject_task()`
+     * via GyuanxMQ as `rpc.some_command` and *also* accept them over HTTP.  Using `inject_task()`
      * allows you to handle processing the request in the same thread pool with the same priority as
      * `rpc.*` commands.
      *
@@ -1157,12 +1157,12 @@ public:
      */
     void inject_task(const std::string& category, std::string command, std::string remote, std::function<void()> callback);
 
-    /// The key pair this LokiMQ was created with; if empty keys were given during construction then
+    /// The key pair this GyuanxMQ was created with; if empty keys were given during construction then
     /// this returns the generated keys.
     const std::string& get_pubkey() const { return pubkey; }
     const std::string& get_privkey() const { return privkey; }
 
-    /** Updates (or initially sets) LokiMQ's list of service node pubkeys with the given list.
+    /** Updates (or initially sets) GyuanxMQ's list of service node pubkeys with the given list.
      *
      * This has two main effects:
      *
@@ -1185,7 +1185,7 @@ public:
 
     /** Updates the list of active pubkeys by adding or removing the given pubkeys from the existing
      * list.  This is more efficient when the incremental information is already available; if it
-     * isn't, simply call set_active_sns with a new list to have LokiMQ figure out what was added or
+     * isn't, simply call set_active_sns with a new list to have GyuanxMQ figure out what was added or
      * removed.
      *
      * \param added new pubkeys that were added since the last set_active_sns or update_active_sns
@@ -1200,7 +1200,7 @@ public:
     /**
      * Batches a set of jobs to be executed by workers, optionally followed by a completion function.
      *
-     * Must include lokimq/batch.h to use.
+     * Must include gyuanxmq/batch.h to use.
      */
     template <typename R>
     void batch(Batch<R>&& batch);
@@ -1244,18 +1244,18 @@ public:
 ///     .add_request_command("b", ...)
 ///     ;
 class CatHelper {
-    LokiMQ& lmq;
+    GyuanxMQ& lmq;
     std::string cat;
 
 public:
-    CatHelper(LokiMQ& lmq, std::string cat) : lmq{lmq}, cat{std::move(cat)} {}
+    CatHelper(GyuanxMQ& lmq, std::string cat) : lmq{lmq}, cat{std::move(cat)} {}
 
-    CatHelper& add_command(std::string name, LokiMQ::CommandCallback callback) {
+    CatHelper& add_command(std::string name, GyuanxMQ::CommandCallback callback) {
         lmq.add_command(cat, std::move(name), std::move(callback));
         return *this;
     }
 
-    CatHelper& add_request_command(std::string name, LokiMQ::CommandCallback callback) {
+    CatHelper& add_request_command(std::string name, GyuanxMQ::CommandCallback callback) {
         lmq.add_request_command(cat, std::move(name), std::move(callback));
         return *this;
     }
@@ -1371,7 +1371,7 @@ struct queue_full {
 namespace detail {
 
 /// Takes an rvalue reference, moves it into a new instance then returns a uintptr_t value
-/// containing the pointer to be serialized to pass (via lokimq queues) from one thread to another.
+/// containing the pointer to be serialized to pass (via gyuanxmq queues) from one thread to another.
 /// Must be matched with a deserializer_pointer on the other side to reconstitute the object and
 /// destroy the intermediate pointer.
 template <typename T>
@@ -1471,7 +1471,7 @@ bt_dict build_send(ConnectionID to, std::string_view cmd, T&&... opts) {
 
 
 template <typename... T>
-void LokiMQ::send(ConnectionID to, std::string_view cmd, const T&... opts) {
+void GyuanxMQ::send(ConnectionID to, std::string_view cmd, const T&... opts) {
     detail::send_control(get_control_socket(), "SEND",
             bt_serialize(detail::build_send(std::move(to), cmd, opts...)));
 }
@@ -1479,7 +1479,7 @@ void LokiMQ::send(ConnectionID to, std::string_view cmd, const T&... opts) {
 std::string make_random_string(size_t size);
 
 template <typename... T>
-void LokiMQ::request(ConnectionID to, std::string_view cmd, ReplyCallback callback, const T &...opts) {
+void GyuanxMQ::request(ConnectionID to, std::string_view cmd, ReplyCallback callback, const T &...opts) {
     const auto reply_tag = make_random_string(15); // 15 random bytes is lots and should keep us in most stl implementations' small string optimization
     bt_dict control_data = detail::build_send(std::move(to), cmd, reply_tag, opts...);
     control_data["request"] = true;
@@ -1490,23 +1490,23 @@ void LokiMQ::request(ConnectionID to, std::string_view cmd, ReplyCallback callba
 
 template <typename... Args>
 void Message::send_back(std::string_view command, Args&&... args) {
-    lokimq.send(conn, command, send_option::optional{!conn.sn()}, std::forward<Args>(args)...);
+    gyuanxmq.send(conn, command, send_option::optional{!conn.sn()}, std::forward<Args>(args)...);
 }
 
 template <typename... Args>
 void Message::send_reply(Args&&... args) {
     assert(!reply_tag.empty());
-    lokimq.send(conn, "REPLY", reply_tag, send_option::optional{!conn.sn()}, std::forward<Args>(args)...);
+    gyuanxmq.send(conn, "REPLY", reply_tag, send_option::optional{!conn.sn()}, std::forward<Args>(args)...);
 }
 
 template <typename Callback, typename... Args>
 void Message::send_request(std::string_view cmd, Callback&& callback, Args&&... args) {
-    lokimq.request(conn, cmd, std::forward<Callback>(callback),
+    gyuanxmq.request(conn, cmd, std::forward<Callback>(callback),
             send_option::optional{!conn.sn()}, std::forward<Args>(args)...);
 }
 
 // When log messages are invoked we strip out anything before this in the filename:
-constexpr std::string_view LOG_PREFIX{"lokimq/", 7};
+constexpr std::string_view LOG_PREFIX{"gyuanxmq/", 7};
 inline std::string_view trim_log_filename(std::string_view local_file) {
     auto chop = local_file.rfind(LOG_PREFIX);
     if (chop != local_file.npos)
@@ -1515,7 +1515,7 @@ inline std::string_view trim_log_filename(std::string_view local_file) {
 }
 
 template <typename... T>
-void LokiMQ::log(LogLevel lvl, const char* file, int line, const T&... stuff) {
+void GyuanxMQ::log(LogLevel lvl, const char* file, int line, const T&... stuff) {
     if (log_level() < lvl)
         return;
 
@@ -1526,6 +1526,6 @@ void LokiMQ::log(LogLevel lvl, const char* file, int line, const T&... stuff) {
 
 std::ostream &operator<<(std::ostream &os, LogLevel lvl);
 
-} // namespace lokimq
+} // namespace gyuanxmq
 
 // vim:sw=4:et

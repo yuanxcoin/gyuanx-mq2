@@ -1,0 +1,5 @@
+namespace gyuanxmq {
+constexpr int VERSION_MAJOR = @GYUANXMQ_VERSION_MAJOR@;
+constexpr int VERSION_MINOR = @GYUANXMQ_VERSION_MINOR@;
+constexpr int VERSION_PATCH = @GYUANXMQ_VERSION_PATCH@;
+}
